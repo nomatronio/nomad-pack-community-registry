@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Nomatron Ltd
+# SPDX-License-Identifier: MPL-2.0
+#
+# CI fixture — lab quickstart with colocated Postgres (database_mode=provision).
+
+deployment_profile = "quickstart"
+database_mode      = "provision"
+network_mode       = "bridge"
+runtime            = "docker"
+
+postgres = {
+  image_tag   = "16"
+  db_name     = "nomatron"
+  username    = "nomatron"
+  password    = "nomatron"
+  volume_path = "nomatron-postgres"
+  cpu         = 500
+  memory      = 1024
+}
+
+secrets = {
+  encryption_key = "Y2ktcGxhY2Vob2xkZXItZW5jcnlwdGlvbi1rZXktbm90LXJlYWw="
+  license_key    = "ci-placeholder-license-key"
+  cluster_key    = "ci-cluster-key"
+}
