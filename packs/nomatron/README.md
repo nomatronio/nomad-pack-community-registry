@@ -145,8 +145,10 @@ constraints = [
 # http_port_static   = 4649
 
 # Existing Traefik/Fabio on Nomad:
-# load_balancer_mode = "service"
-# register_service   = true
+# load_balancer_mode    = "service"
+# register_service      = true
+# register_grpc_service = true   # Host Agent gRPC via Traefik TCP; see load-balancing.md
+# agent_grpc_advertise_addr = "grpc.example.com:4650"
 ```
 
 ### Production (BYODB, Docker)
@@ -290,7 +292,7 @@ runtime            = "binary"
 
 binary_install_method = "host"
 binary_path           = "/usr/bin/nomatron"
-nomatron_version      = "v0.1.0-rc.21"
+nomatron_version      = "v0.1.0-rc.45"
 
 # Alternative: binary_install_method = "artifact", binary_arch = "amd64"
 
@@ -423,6 +425,8 @@ secrets = {
 ```
 
 Generate Serf encryption key: `nomatron keygen`
+
+Leave `serf.advertise_addr` empty. Use `nomatron_version` `v0.1.0-rc.45` or later so each allocation registers `NOMAD_HOST_IP_serf` (the Nomad client IP) instead of `127.0.0.1`.
 
 ### Quickstart (provision — lab)
 
@@ -592,6 +596,8 @@ See [load balancing guide](https://github.com/nomatronio/nomatron-pack/tree/main
 
 **Cloud production default:** ALB → each client on **4649** — no Traefik required.
 
+Host Agent gRPC is a **separate TCP** path (`register_grpc_service`, `agent_grpc_advertise_addr`). See [Host Agent gRPC](https://github.com/nomatronio/nomatron-pack/blob/main/docs/common/load-balancing.md#host-agent-grpc-traefik-tcp).
+
 ### TLS
 
 Nomatron listens **HTTP on 4649** inside the task (`server.tls_enabled = false` in production examples). User-facing TLS terminates **in front** of Nomatron:
@@ -615,7 +621,7 @@ server = {
 }
 ```
 
-Advanced: set `server.tls_enabled = true` and `tls_cert_file` / `tls_key_file` when Nomatron terminates TLS directly (no LB). The pack does not mount certificates — you provide paths on the client.
+Advanced: set `server.tls_enabled = true` for origin TLS (required for Host Agent gRPC passthrough). Leave `tls_cert_file` / `tls_key_file` empty to load PEMs from Nomad Variables or Vault — see [secrets](https://github.com/nomatronio/nomatron-pack/blob/main/docs/common/secrets.md#origin-tls-pems-optional). Traefik then uses HTTPS to Nomatron; edge TLS (ALB, Pinggy) can stay in front.
 
 ### CSRF and `trusted_origins`
 
@@ -720,7 +726,10 @@ Generate `encryption_key` and `serf.encrypt_key` yourself. For production, store
 - `database_mode` — `provision` (lab default) or `byodb`
 - `runtime` — `docker` or `binary`
 - `load_balancer_mode` — `none`, `service`, or `traefik`
-- `nomatron_version` — release tag (default `v0.1.0-rc.20`)
+- `register_grpc_service` — Traefik TCP service for Host Agent gRPC (default `false`)
+- `agent_grpc_advertise_addr` — public TCP `host:port` Host Agents dial (not the HTTPS URL)
+- `server.tls_enabled` — origin TLS; empty cert paths load PEMs from Nomad Variables (`tls_cert` / `tls_key` / `tls_ca`)
+- `nomatron_version` — release tag (default `v0.1.0-rc.45`; HA on Nomad requires this or later)
 - `count` — server instances
 - `node_pool`, `constraints` — dedicated client placement
 - `server`, `database`, `postgres`, `serf`, `bootstrap` — see `nomad-pack info nomatron`
@@ -734,8 +743,17 @@ Run `nomad-pack info .` (or `nomad-pack info nomatron` from the registry) for th
 | Port | Purpose |
 |---|---|
 | 4649 | HTTP API and Web UI |
-| 4650 | Agent gRPC |
+| 4650 | Agent gRPC (task listen port; Traefik TCP entrypoint when using Host Agents) |
 | 7946 | Serf gossip (HA) |
+
+Host Agents enroll over HTTPS and then dial **gRPC over TCP**. Do not advertise the HTTPS reverse proxy (`:443`) as the gRPC address — set `agent_grpc_advertise_addr` and `register_grpc_service`. See [Host Agent gRPC](https://github.com/nomatronio/nomatron-pack/blob/main/docs/common/load-balancing.md#host-agent-grpc-traefik-tcp).
+
+Leave `serf.advertise_addr` empty. The group port label `serf` interpolates:
+
+- `NOMAD_HOST_IP_serf` — that Nomad client's IP (for example `192.168.3.16`)
+- `NOMAD_HOST_PORT_serf` — the mapped host port (typically `7946`)
+
+Nomatron **v0.1.0-rc.45+** uses those env vars for Serf advertise and for `server_nodes` registration when `bind_addr` is `0.0.0.0`. `serf.retry_join` must still list reachable client IPs, but it is not a substitute: if the host IP env var is missing, registration falls back to `127.0.0.1` and HA nodes collide. Bridge/CNI allocation IPs (`172.26.x`) are not reachable across clients.
 
 Health check: `/api/v1/health?bootstrap=ok`
 
