@@ -1,3 +1,78 @@
+## Version v0.2.11 (2026-10-18)
+
+### Added
+
+- **`secret_change_mode`:** controls Nomad template `change_mode` for runtime secret templates when using `secrets_backend=nomad_var` or `vault`: `nomatron.env`, TLS PEMs, and `NOMAD_SECRETS_DIR/secrets/serf.key` (any server count; requires Nomatron **v0.1.1+** and `--serf-encrypt-key-file`). Default (empty): `noop` when `count > 1` (HA — no simultaneous restarts on rotation) and `restart` when `count = 1`. Set `secret_change_mode=restart` to restore automatic pickup on change (all servers restart together).
+- **Serf key file permissions:** render `secrets/serf.key` as `0444` (same as TLS `key.pem`) so Distroless `nonroot` (uid 65532) can read Nomad-written alloc secrets.
+
+## Version v0.2.10 (2026-09-02)
+
+### Fixed
+
+- **Traefik 404 with origin TLS:** stop emitting Nomad `serversTransport` tags. Traefik's Nomad provider cannot create that resource, so the HTTP router disappeared. Skip-verify for a private origin CA belongs in Traefik static config (`serversTransport.insecureSkipVerify=true`).
+
+## Version v0.2.9 (2026-09-02)
+
+### Fixed
+
+- **TLS key permissions:** render `key.pem` as `0444`. The Nomatron image runs as Distroless `nonroot` (uid 65532); Nomad writes alloc secrets as root, so `0400` caused `open /secrets/tls/key.pem: permission denied`. The file stays in `NOMAD_SECRETS_DIR` (not the alloc `local/` tree).
+
+## Version v0.2.8 (2026-09-02)
+
+### Fixed
+
+- **HA `encrypt_key` HCL:** `nomad-pack fmt` split Consul Template `{{` delimiters in the Serf encrypt_key stanza. Nomatron then parsed a literal `| toJSON` as a bitwise OR (`Unsupported operator`). Do not run `nomad-pack fmt` on templates that embed `{{` Nomad/Consul Template.
+
+## Version v0.2.7 (2026-09-02)
+
+### Added
+
+- **Origin TLS from Nomad Variables / Vault:** when `server.tls_enabled = true` and `tls_cert_file` / `tls_key_file` are empty, the pack writes `tls_cert`, `tls_key`, and `tls_ca` from the secrets backend onto `${NOMAD_SECRETS_DIR}/tls/` at alloc start. Do not put PEMs in pack vars or the job spec.
+- Traefik HTTP tags use `scheme=https` when origin TLS is on (optional `traefik_origin_insecure_skip_verify` for a private CA).
+
+## Version v0.2.6 (2026-09-02)
+
+### Added
+
+- **Host Agent gRPC via Traefik TCP:** opt-in `register_grpc_service` registers a separate Nomad service (`nomatron-grpc`) with Traefik TCP passthrough tags. Do not put TCP tags on the HTTP `nomatron` service.
+- **`agent_grpc_advertise_addr`:** public `host:port` Host Agents dial. When empty, Nomatron advertises the API hostname on port 443, which is the HTTP(S) reverse proxy — not gRPC.
+- **`grpc_port_static`:** optional static host port for agent gRPC. Leave `0` (dynamic) when Traefik on the same client already binds `4650`.
+- Pack Traefik (`load_balancer_mode=traefik`) adds a `nomatron-grpc` TCP entrypoint on `traefik_grpc_port` (default `4650`) when `register_grpc_service` is true.
+
+## Version v0.2.5 (2026-08-31)
+
+### Fixed
+
+- **Serf advertise_addr in nomatron.hcl:** render the Nomad client IP with Consul Template `{{ env "NOMAD_HOST_IP_serf" }}` instead of `${NOMAD_HOST_IP_serf}`. Nomad does not interpolate `${}` inside template `data`, so the literal variable reached Nomatron's HCL parser and failed with "Variables not allowed".
+
+## Version v0.2.4 (2026-08-31)
+
+### Fixed
+
+- **Community registry CI:** add MPL license headers so HashiCorp copywrite passes, and sync `.ci/vars-*.hcl` into the pack so registry `nomad-pack render` has placeholder secrets.
+
+## Version v0.2.3 (2026-08-31)
+
+### Changed
+
+- Default `nomatron_version` is `v0.1.0-rc.45`. HA on Nomad needs this release (or later) so Serf registration uses the Nomad client IP.
+
+### Fixed
+
+- **Serf host IP registration:** each Nomatron task now sets `NOMAD_HOST_IP_serf` and `NOMAD_HOST_PORT_serf` from the group network port label `serf`. Nomatron rc.45+ writes those values into `server_nodes` when `serf.bind_addr` is `0.0.0.0`. If only `retry_join` is set and the host IP env var is missing, every allocation registers as `127.0.0.1:7946` and hits the unique constraint. Leave `serf.advertise_addr` empty so gossip also advertises the Nomad client IP, not the bridge/CNI address.
+
+## Version v0.2.2 (2026-08-30)
+
+### Fixed
+
+- **`nomad_var` / `vault` database config:** emit a placeholder `connection_string` in `nomatron.hcl` so Nomatron HCL decode succeeds. The real URL still comes from `NOMATRON_DB_URL` at runtime.
+
+## Version v0.2.1 (2026-08-30)
+
+### Fixed
+
+- **Serf `encrypt_key` with Nomad Variables / Vault:** remove extra quotes around `toJSON` in `nomatron.hcl` so HA deployments no longer render `encrypt_key = ""key""` and fail Nomatron config parsing.
+
 ## Version v0.2.0 (2026-08-02)
 
 ### Added
